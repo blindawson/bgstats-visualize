@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.tmp.*
+.venv/
+*.json
+data/*
+!data/BGStatsExport.json
+!data/MB rankings.csv
+!data/avg_durations.json
+.streamlit/
