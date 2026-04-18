@@ -3,6 +3,10 @@ BGG XML API v2 client.
 
 Fetches play history and game metadata for a BGG user.
 Sleeps ~2 s between requests to stay within BGG's rate limit guidance.
+
+BGG now requires authentication for all API calls.  Call ``create_session``
+first to obtain an authenticated :class:`requests.Session`, then pass it to
+``fetch_all_plays`` and ``fetch_game_details``.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ import xml.etree.ElementTree as ET
 import requests
 
 BGG_API = "https://boardgamegeek.com/xmlapi2"
+_BGG_LOGIN = "https://boardgamegeek.com/login/api/v1"
 
 # BGG mechanic link ID for "Cooperative Game"
 _COOPERATIVE_MECHANIC_ID = "2023"
@@ -22,10 +27,34 @@ _REQUEST_DELAY = 2.0
 
 
 # ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+def create_session(username: str, password: str) -> requests.Session:
+    """
+    Log in to BGG and return an authenticated :class:`requests.Session`.
+
+    The session carries the BGG cookies required for all subsequent API calls.
+    Raises ``RuntimeError`` on login failure.
+    """
+    session = requests.Session()
+    resp = session.post(
+        _BGG_LOGIN,
+        json={"credentials": {"username": username, "password": password}},
+        timeout=15,
+    )
+    if resp.status_code == 200:
+        return session
+    raise RuntimeError(
+        f"BGG login failed ({resp.status_code}): {resp.text[:200]}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
 
-def fetch_all_plays(username: str) -> list[dict]:
+def fetch_all_plays(username: str, session: requests.Session) -> list[dict]:
     """
     Fetch every play logged by *username* on BGG (all pages).
 
@@ -54,7 +83,7 @@ def fetch_all_plays(username: str) -> list[dict]:
 
     while True:
         url = f"{BGG_API}/plays?username={username}&page={page}"
-        root = _get_xml(url)
+        root = _get_xml(url, session)
 
         total = int(root.attrib.get("total", 0))
         page_plays = root.findall("play")
@@ -96,24 +125,24 @@ def fetch_all_plays(username: str) -> list[dict]:
     return plays
 
 
-def fetch_game_details(bgg_ids: list[int]) -> dict[int, dict]:
+def fetch_game_details(bgg_ids: list[int], session: requests.Session) -> dict[int, dict]:
     """
     Fetch metadata for a list of BGG game IDs (batched in groups of 20).
 
     Returns ``{bgg_id: {...}}`` where each game dict has::
 
         {
-            "bgg_id":       266192,
-            "name":         "Wingspan",
-            "bgg_year":     2019,
-            "url_thumb":    "https://cf.geekdo-images.com/...",
-            "url_image":    "https://cf.geekdo-images.com/...",
-            "cooperative":  False,
-            "min_players":  1,
-            "max_players":  5,
+            "bgg_id":        266192,
+            "name":          "Wingspan",
+            "bgg_year":      2019,
+            "url_thumb":     "https://cf.geekdo-images.com/...",
+            "url_image":     "https://cf.geekdo-images.com/...",
+            "cooperative":   False,
+            "min_players":   1,
+            "max_players":   5,
             "min_play_time": 40,
             "max_play_time": 70,
-            "designers":    "Elizabeth Hargrave",
+            "designers":     "Elizabeth Hargrave",
         }
     """
     result: dict[int, dict] = {}
@@ -123,7 +152,7 @@ def fetch_game_details(bgg_ids: list[int]) -> dict[int, dict]:
         batch = bgg_ids[i : i + batch_size]
         ids_str = ",".join(str(bid) for bid in batch)
         url = f"{BGG_API}/thing?id={ids_str}&stats=1"
-        root = _get_xml(url)
+        root = _get_xml(url, session)
 
         for item in root.findall("item"):
             bid = int(item.attrib.get("id", 0))
@@ -186,15 +215,15 @@ def fetch_game_details(bgg_ids: list[int]) -> dict[int, dict]:
 # Internal
 # ---------------------------------------------------------------------------
 
-def _get_xml(url: str, max_retries: int = 5) -> ET.Element:
+def _get_xml(url: str, session: requests.Session, max_retries: int = 5) -> ET.Element:
     """
-    GET *url* and return parsed XML root.
+    GET *url* using *session* and return parsed XML root.
 
     Handles HTTP 202 (BGG queue), 429 (rate limit), and 5xx errors with
     exponential back-off.  Raises ``RuntimeError`` after *max_retries*.
     """
     for attempt in range(max_retries):
-        resp = requests.get(url, timeout=30)
+        resp = session.get(url, timeout=30)
 
         if resp.status_code == 200:
             return ET.fromstring(resp.content)

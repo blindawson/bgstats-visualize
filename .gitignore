@@ -7,5 +7,5 @@ data/*
 !data/BGStatsExport.json
 !data/MB rankings.csv
 !data/avg_durations.json
-!data/bgg_config.json
+# data/bgg_config.json is intentionally gitignored — it contains credentials
 .streamlit/

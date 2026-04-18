@@ -117,6 +117,13 @@ class TestBuildGamesDf:
 # ===========================================================================
 
 class TestComputeGlobalAvgDurations:
+    @pytest.fixture(autouse=True)
+    def no_avg_dur_file(self, monkeypatch, tmp_path):
+        """Point AVG_DUR_PATH at a nonexistent location so the function
+        always computes from the supplied plays rather than loading from disk."""
+        import src.loader as _loader
+        monkeypatch.setattr(_loader, "AVG_DUR_PATH", tmp_path / "nonexistent.json")
+
     def _plays(self, game_id, durations):
         """Build minimal raw-play dicts for duration computation."""
         return [

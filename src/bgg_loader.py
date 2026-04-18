@@ -11,6 +11,7 @@ Create ``data/bgg_config.json`` (see ``data/bgg_config.example.json``)::
 
     {
         "username": "YOUR_BGG_USERNAME",
+        "password": "YOUR_BGG_PASSWORD",
         "cache_ttl_hours": 6,
         "player_names": {
             "Brian":   54,
@@ -73,10 +74,11 @@ def load_data_bgg() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     cfg = _load_config()
     username: str = cfg["username"]
+    password: str = cfg["password"]
     ttl_hours: float = float(cfg.get("cache_ttl_hours", 6))
     name_map: dict[str, int] = cfg.get("player_names", _DEFAULT_NAME_MAP)
 
-    raw = _get_cached_or_fetch(username, ttl_hours)
+    raw = _get_cached_or_fetch(username, password, ttl_hours)
 
     plays_raw: list[dict] = raw["plays"]
     # games are stored in JSON with string keys; re-key by int
@@ -99,7 +101,7 @@ def _load_config() -> dict:
         return json.load(f)
 
 
-def _get_cached_or_fetch(username: str, ttl_hours: float) -> dict:
+def _get_cached_or_fetch(username: str, password: str, ttl_hours: float) -> dict:
     """Return file-cached data if fresh; otherwise fetch from BGG."""
     if _CACHE_PATH.exists():
         with open(_CACHE_PATH, encoding="utf-8") as f:
@@ -117,14 +119,15 @@ def _get_cached_or_fetch(username: str, ttl_hours: float) -> dict:
             if age_hours < ttl_hours:
                 return cached
 
-    return _fetch_and_cache(username)
+    return _fetch_and_cache(username, password)
 
 
-def _fetch_and_cache(username: str) -> dict:
-    """Fetch all plays + game details from BGG and persist to disk."""
-    plays = bgg_fetcher.fetch_all_plays(username)
+def _fetch_and_cache(username: str, password: str) -> dict:
+    """Log in to BGG, fetch all plays + game details, and persist to disk."""
+    session = bgg_fetcher.create_session(username, password)
+    plays = bgg_fetcher.fetch_all_plays(username, session)
     bgg_ids = list({p["game_id"] for p in plays if p["game_id"]})
-    games = bgg_fetcher.fetch_game_details(bgg_ids)
+    games = bgg_fetcher.fetch_game_details(bgg_ids, session)
 
     payload = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
