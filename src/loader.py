@@ -219,14 +219,19 @@ def _build_plays_dfs(
 
 
 def _consolidate_magic_maze(
-    plays_df: pd.DataFrame, scores_df: pd.DataFrame
+    plays_df: pd.DataFrame,
+    scores_df: pd.DataFrame,
+    game_id: int = MAGIC_MAZE_ID,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Collapse all Magic Maze plays on the same date into one row.
     Duration is summed; marked estimated if any constituent was estimated.
+
+    *game_id* defaults to ``MAGIC_MAZE_ID`` (BGStats internal ID) but can be
+    overridden with the BGG object ID when loading data from BGG.
     """
-    mm = plays_df[plays_df["game_id"] == MAGIC_MAZE_ID].copy()
-    other = plays_df[plays_df["game_id"] != MAGIC_MAZE_ID]
+    mm = plays_df[plays_df["game_id"] == game_id].copy()
+    other = plays_df[plays_df["game_id"] != game_id]
 
     if mm.empty:
         return plays_df, scores_df
@@ -242,7 +247,7 @@ def _consolidate_magic_maze(
         consolidated_plays.append({
             "play_id": combined_id,
             "play_date": first["play_date"],
-            "game_id": MAGIC_MAZE_ID,
+            "game_id": game_id,
             "duration_min": group["duration_min"].sum(),
             "duration_estimated": group["duration_estimated"].any(),
             "location_id": first["location_id"],
